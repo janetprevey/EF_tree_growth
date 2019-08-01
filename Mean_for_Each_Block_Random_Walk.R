@@ -86,3 +86,48 @@ acfplot(jags.burn)
 effectiveSize(jags.burn)
 summary(jags.burn)
 out <- as.matrix(jags.burn)
+
+## credible and prediction intervals
+head(out)
+nsamp <- 5000
+samp <- sample.int(nrow(out),nsamp)
+xpred <- seq(1,10,length=10)  					## sequence of x values we're going to
+npred <- length(xpred)				##      make predictions for
+
+
+alpha_matrix <- out[,1:12]
+head(alpha_matrix)
+
+intervals_by_region <- list()
+
+for(i in seq_len(12)){# region loop
+  ypred <- matrix(0.0,nrow=nsamp,ncol=npred)	## storage for predictive interval
+  ycred <- matrix(0.0,nrow=nsamp,ncol=npred)	## storage for credible interval
+  for(g in seq_len(nsamp)){ # sample loop
+    theta <- out[samp[g],]
+    alpha_i <- theta[i] 
+    ycred[g,] <- theta[grep(paste(",",i,"]",sep = ""),names(theta))]+ alpha_i
+    ypred[g,] <- rnorm(npred, ycred[g,], 1/sqrt(theta["tau_obs"]))
+  }
+  
+  ci <- apply(ycred,2,quantile,c(0.025,0.5,0.975))  ## credible interval and median
+  pi <- apply(ypred,2,quantile,c(0.025,0.975))		## prediction interval
+  intervals_by_region[[i]]<- rbind(ci,pi)
+}
+
+#'
+#' # Plot for each region over time
+#'
+## states  
+
+head(intervals_by_region)
+dev.off()
+plot(seq(from=0,to=1200,length.out = 10)~xpred,type="n",ylab = "Height (cm)",xlab="Year")
+
+for(s in 1:12){
+  ciEnvelope(x = xpred,ylo = intervals_by_region[[s]][1,],
+             yhi = intervals_by_region[[s]][3,],col=col.alpha(s,0.6))
+  points(xpred,intervals_by_region[[s]][2,],col=s,pch=19)
+  points(xpred,intervals_by_region[[s]][2,])
+}
+
