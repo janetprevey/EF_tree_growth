@@ -23,7 +23,7 @@ growth <- sub %>%
   # 2 = alive
   # 1 = dead
 # This is to incorporate mortality into future models 
-live_dead <- clean %>%
+live_dead <- growth %>%
    mutate(mortality = as.integer(factor(alive))) %>%
    select(plot, tag_num, year, mortality) 
 
@@ -52,7 +52,7 @@ y[i] ~ dnorm(x[time[i]],tau_obs)		        ## data model
 
 y <- growth$HT_cm
 time <- rep(1:10, 970)
-region <- as.integer(growth$region)
+region <- as.integer(factor(growth$region))
 
 data <- list(region=region,NR=12,n=length(y),time=time,y=y,NT=10,x_ic=5,tau_ic=100,a_obs=1,r_obs=1,a_add=1,r_add=1,s1=0.1,s2=0.1)
 
