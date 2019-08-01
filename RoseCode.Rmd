@@ -15,10 +15,34 @@ precip <- read.csv(paste0(datadir,"buckhorn_daily_precip.csv"))
 temps <- read.csv(paste0(datadir,"buckhorn_daily_temps.csv"))
 growth <- read.csv(paste0(datadir,"buckhorn_growth_2007_2018.csv"))
 
-xinit <- mean(growth[growth$year=="2009",]$HT_cm, na.rm=T)
-
 all_growth <- growth
-growth$HT_cm<-ifelse(all_growth$year%in%c(2016,2017,2018),NA,growth_sub$HT_cm)
+growth$HT_cm<-ifelse(all_growth$year%in%c(2016,2017,2018),NA,all_growth$HT_cm)
+
+xinit <- mean(growth[growth$year=="2009",]$HT_cm, na.rm=T)
+```
+
+#Clean data
+```
+I may have introduced a bug but I get an indexing issue in the plots
+```
+```{r}
+# #read in tree growth data
+# data <- growth
+#   
+# #remove non-integer values from column "row"
+# sub <- data[data$row %%1 == 0,] 
+# 
+# #filter trees to see tag numbers of trees labeled "NP" (Not Planted)
+# NP <- filter(sub, alive == "NP") %>%
+#   select(tag_num)
+# 
+# # remove trees labled "NP" (Not Planted) in 2009 from all years, 
+# # remove trees that died during experiment, remove unneeded columns 
+# growth <- sub %>%
+#   arrange(plot) %>%
+#   filter(!tag_num %in% c(4909,56,4856,4887,2142,3682)) %>%
+#   filter(alive == "y") %>%
+#   select(-site, -site_num, -dead_year, -notes) 
 ```
 
 #Individual Trees Random Walk
@@ -304,29 +328,52 @@ model{
   beta ~ dnorm(0,0.0001)
   tau_inc ~ dgamma(a_inc,r_inc)
   r ~ dnorm(0,0.0001)
-  K ~ dnorm(0,0.0001)
+  K ~ dnorm(900,0.0001) T(0,)
 
 for(t in 2:NT){ ## t = year
-  Ex[t] = x[t-1] + r*x[t-1]*(1-x[t-1]/K)
-
-for(i in 1:n){ ## i = individual trees
-  x[1,i] ~ dnorm(x_ic,tau_ic)
-  x[t,i]~dnorm(Ex[t],tau_add)  ## process model
-  inc[t,i] <- x[t,i]-x[t-1,i]
-  z[t,i] ~ dnorm(inc[t,i],tau_inc)
-}
+    for(i in 1:n){ ## i = individual trees
+      Ex[t,i] = x[t-1,i] + r*x[t-1,i]*(1-x[t-1,i]/K)
+      x[t,i] ~ dnorm(Ex[t,i],tau_add)  ## process model
+      inc[t,i] <- x[t,i]-x[t-1,i]
+      z[t,i] ~ dnorm(inc[t,i],tau_inc)
+    }
 }
 
 for(i in 1:n){ ## i = individual trees
   y[i] ~ dnorm(x[time[i],i],tau_obs)
+  x[1,i] ~ dnorm(x_ic,tau_ic)
 }
 }
 "
 
+RandomWalk_LogGrowth <- "
+model{
+  tau_obs ~ dgamma(a_obs,r_obs)
+  tau_add ~ dgamma(a_add,r_add)
+  beta ~ dnorm(0,0.0001)
+  tau_inc ~ dgamma(a_inc,r_inc)
+  r ~ dnorm(0,0.0001)
+  K ~ dnorm(900,0.0001) T(0,)
+  x[1] ~ dnorm(x_ic,tau_ic)
+
+for(t in 2:NT){ ## t = year
+      Ex[t] = x[t-1] + r*x[t-1]*(1-x[t-1]/K)
+      x[t] ~ dnorm(Ex[t],tau_add)  ## process model
+      inc[t] <- x[t]-x[t-1]
+      z[t] ~ dnorm(inc[t],tau_inc)
+}
+
+for(i in 1:n){ ## i = individual trees
+  y[i] ~ dnorm(x[time[i]],tau_obs)
+}
+}
+"
+
+
 y <- growth$HT_cm
 time <- rep(1:10, 970)
 
-data <- list(n=length(y),time=time,y=y,NT=10,x_ic=xinit,tau_ic=100,a_obs=1,r_obs=1,a_add=1,r_add=1,a_inc=1,r_inc=1)
+data <- list(n=length(y),time=time,y=y,NT=10,x_ic=5,tau_ic=100,a_obs=1,r_obs=1,a_add=1,r_add=1,a_inc=1,r_inc=1)
 
 nchain = 3
 init <- list()
@@ -375,7 +422,7 @@ for(g in seq_len(nsamp)){
 ci <- apply(ycred,2,quantile,c(0.025,0.5,0.975))  ## credible interval and median
 pi <- apply(ypred,2,quantile,c(0.025,0.975))		## prediction interval
 
-pdf(file=paste0(datadir,"all_trees_RW_Growth.pdf"), height=4, width=4)
+pdf(file=paste0(datadir,"all_trees_RW_LogGrowth.pdf"), height=4, width=4)
 plot(growth$year,data$y,cex=0.5, ylab = "Height (cm)", xlab = "Time (year)", ylim=c(0,900))
 lines(xpred+2008,ci[1,],col=3,lty=2)	## lower CI
 lines(xpred+2008,ci[2,],col=3,lwd=3)	## median
