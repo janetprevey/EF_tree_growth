@@ -1,11 +1,27 @@
 library(dplyr)
 library(ecoforecastR)
 
-datadir <- "/Users/rzabramoff/Documents/Forecasting/EF_tree_growth/"
-precip <- read.csv(paste0(datadir,"buckhorn_daily_precip.csv"))
-temps <- read.csv(paste0(datadir,"buckhorn_daily_temps.csv"))
-growth <- read.csv(paste0(datadir,"buckhorn_growth_2007_2018.csv"))
+precip <- read.csv("buckhorn_daily_precip.csv")
+temps <- read.csv("buckhorn_daily_temps.csv")
+data <- read.csv("buckhorn_growth_2007_2018.csv") %>%
+mutate(time = rep(1:10, 970))
 
+#remove non-integer values from column "row"
+sub <- data[data$row %%1 == 0,] 
+
+#filter trees to see tag numbers of trees labeled "NP" (Not Planted)
+NP <- filter(sub, alive == "NP") %>%
+  select(tag_num)
+
+# remove trees labled "NP" (Not Planted) in 2009 from all years, 
+# remove trees that died during experiment, remove unneeded columns 
+growth <- sub %>%
+  arrange(plot) %>%
+  filter(!tag_num %in% c(4909,56,4856,4887,2142,3682)) %>%
+  filter(alive == "y") %>%
+  select(-site, -site_num, -dead_year, -notes) 
+
+# specify model in JAGS code as text
 RandomWalk_YearRegion <- "
 model{
 tau_obs ~ dgamma(a_obs,r_obs)
@@ -36,7 +52,7 @@ y[i] ~ dnorm(x[time[i],region[i]],tau_obs)		        ## data model
 "
 
 y <- growth$HT_cm
-time <- rep(1:10, 970)
+time <- growth$time
 region <- as.integer(growth$region)
 
 data <- list(region=region,NR=12,n=length(y),time=time,y=y,NT=10,x_ic=5,tau_ic=100,a_obs=1,r_obs=1,a_add=1,r_add=1,r1=0.1,r2=0.1,t1=0.1,t2=0.1)
@@ -70,3 +86,4 @@ acfplot(jags.burn)
 effectiveSize(jags.burn)
 summary(jags.burn)
 out <- as.matrix(jags.burn)
+
