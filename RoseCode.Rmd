@@ -530,12 +530,12 @@ plot(seq(from=0,to=1200,length.out = 10)~xaxis,type="n",ylab = "Height (cm)",xla
 
 for(s in 1:12){
   ciEnvelope(x = xaxis,ylo = intervals_by_region[[s]][1,],
-             yhi = intervals_by_region[[s]][3,],col=col.alpha(colors_C[s],0.6))
+             yhi = intervals_by_region[[s]][3,],col=col.alpha(colors_C[s],0.6), pch=16)
   #points(xaxis,intervals_by_region[[s]][2,],col=colors_C[s],pch=19)
   #points(xaxis,intervals_by_region[[s]][2,])
 }
-  points(meanregion$year, meanregion$meanregion)
-legend(x = 0.75,y = 1210,legend = regions,col = colors_C,pch = 16,bty = "n")
+  points(meanregion$year, meanregion$meanregion, col=rep(colors_C,10), pch = 16)
+legend(x = 0.75,y = 1210,legend = regions,col = colors_C,bty = "n")
 dev.off()
 ```
 
