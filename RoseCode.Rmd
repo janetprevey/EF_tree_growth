@@ -15,10 +15,34 @@ precip <- read.csv(paste0(datadir,"buckhorn_daily_precip.csv"))
 temps <- read.csv(paste0(datadir,"buckhorn_daily_temps.csv"))
 growth <- read.csv(paste0(datadir,"buckhorn_growth_2007_2018.csv"))
 
-xinit <- mean(growth[growth$year=="2009",]$HT_cm, na.rm=T)
-
 all_growth <- growth
-growth$HT_cm<-ifelse(all_growth$year%in%c(2016,2017,2018),NA,growth_sub$HT_cm)
+growth$HT_cm<-ifelse(all_growth$year%in%c(2016,2017,2018),NA,all_growth$HT_cm)
+
+xinit <- mean(growth[growth$year=="2009",]$HT_cm, na.rm=T)
+```
+
+#Clean data
+```
+I may have introduced a bug but I get an indexing issue in the plots
+```
+```{r}
+# #read in tree growth data
+# data <- growth
+#   
+# #remove non-integer values from column "row"
+# sub <- data[data$row %%1 == 0,] 
+# 
+# #filter trees to see tag numbers of trees labeled "NP" (Not Planted)
+# NP <- filter(sub, alive == "NP") %>%
+#   select(tag_num)
+# 
+# # remove trees labled "NP" (Not Planted) in 2009 from all years, 
+# # remove trees that died during experiment, remove unneeded columns 
+# growth <- sub %>%
+#   arrange(plot) %>%
+#   filter(!tag_num %in% c(4909,56,4856,4887,2142,3682)) %>%
+#   filter(alive == "y") %>%
+#   select(-site, -site_num, -dead_year, -notes) 
 ```
 
 #Individual Trees Random Walk
@@ -253,10 +277,6 @@ jags.out   <- coda.samples (model = j.model,
                             variable.names = c("x","beta","tau_obs","tau_add"),
                                 n.iter = 5000)
 
-##evaluate model
-#plot(jags.out)
-#gelman.plot(jags.out)
-
 ##remove burnin
 burnin = 500                                ## determine convergence
 jags.burn <- window(jags.out,start=burnin)  ## remove burn-in
@@ -304,21 +324,18 @@ model{
   beta ~ dnorm(0,0.0001)
   tau_inc ~ dgamma(a_inc,r_inc)
   r ~ dnorm(0,0.0001)
-  K ~ dnorm(0,0.0001)
+  K ~ dnorm(900,0.0001) T(0,)
+  x[1] ~ dnorm(x_ic,tau_ic)
 
 for(t in 2:NT){ ## t = year
-  Ex[t] = x[t-1] + r*x[t-1]*(1-x[t-1]/K)
-
-for(i in 1:n){ ## i = individual trees
-  x[1,i] ~ dnorm(x_ic,tau_ic)
-  x[t,i]~dnorm(Ex[t],tau_add)  ## process model
-  inc[t,i] <- x[t,i]-x[t-1,i]
-  z[t,i] ~ dnorm(inc[t,i],tau_inc)
-}
+      Ex[t] = x[t-1] + r*x[t-1]*(1-x[t-1]/K)
+      x[t] ~ dnorm(Ex[t],tau_add)  ## process model
+      inc[t] <- x[t]-x[t-1]
+      z[t] ~ dnorm(inc[t],tau_inc)
 }
 
 for(i in 1:n){ ## i = individual trees
-  y[i] ~ dnorm(x[time[i],i],tau_obs)
+  y[i] ~ dnorm(x[time[i]],tau_obs)
 }
 }
 "
@@ -326,7 +343,7 @@ for(i in 1:n){ ## i = individual trees
 y <- growth$HT_cm
 time <- rep(1:10, 970)
 
-data <- list(n=length(y),time=time,y=y,NT=10,x_ic=xinit,tau_ic=100,a_obs=1,r_obs=1,a_add=1,r_add=1,a_inc=1,r_inc=1)
+data <- list(n=length(y),time=time,y=y,NT=10,x_ic=5,tau_ic=100,a_obs=1,r_obs=1,a_add=1,r_add=1,a_inc=1,r_inc=1)
 
 nchain = 3
 init <- list()
@@ -358,6 +375,12 @@ effectiveSize(jags.burn)
 summary(jags.burn)
 out <- as.matrix(jags.burn)
 
+pdf(file=paste0(datadir,"MCMC_diagnostice_loggrowth.pdf"))
+plot(jags.burn)
+gelman.plot(jags.burn)
+acfplot(jags.burn)
+dev.off()
+
 ## credible and prediction intervals
 nsamp <- 5000
 samp <- sample.int(nrow(out),nsamp)
@@ -375,7 +398,7 @@ for(g in seq_len(nsamp)){
 ci <- apply(ycred,2,quantile,c(0.025,0.5,0.975))  ## credible interval and median
 pi <- apply(ypred,2,quantile,c(0.025,0.975))		## prediction interval
 
-pdf(file=paste0(datadir,"all_trees_RW_Growth.pdf"), height=4, width=4)
+pdf(file=paste0(datadir,"all_trees_RW_LogGrowth.pdf"), height=4, width=4)
 plot(growth$year,data$y,cex=0.5, ylab = "Height (cm)", xlab = "Time (year)", ylim=c(0,900))
 lines(xpred+2008,ci[1,],col=3,lty=2)	## lower CI
 lines(xpred+2008,ci[2,],col=3,lwd=3)	## median
@@ -384,6 +407,222 @@ lines(xpred+2008,pi[1,],col=4,lty=2)	## lower PI
 lines(xpred+2008,pi[2,],col=4,lty=2)	## upper PI
 points(meantree$year,meantree$meantree,pch="+",cex=1.5)
 dev.off()
+```
+
+#Logistic Growth Regions RW
+```{r}
+Log_RandomWalk_Regions <- "
+model{
+  tau_obs ~ dgamma(a_obs,r_obs)
+  tau_r ~ dgamma(r1,r2)
+  tau_add ~ dgamma(a_add,r_add)
+  beta ~dnorm(0,0.0001)
+  tau_inc ~ dgamma(a_inc,r_inc)
+  r ~ dnorm(0,0.0001)
+  K ~ dnorm(900,0.0001) T(0,)
+
+  for(r in 1:NR){
+    alpha_r[r] ~ dnorm(0,tau_r)
+    x[1,r] ~ dnorm(x_ic,tau_ic)
+  }
+  
+  for(t in 2:NT){ ## t = year
+    for(r in 1:NR){
+      z[t,r] ~ dnorm(inc[t,r],tau_inc)
+      inc[t,r] <- x[t,r]-x[t-1,r]
+      x[t,r] ~ dnorm(Ex[t,r],tau_add)  ## process model
+      Ex[t,r] <- x[t-1,r] +  r*x[t-1,r]*(1-x[t-1,r]/K) + alpha_r[r]
+    }
+  }
+  
+  for(i in 1:n){ ## i = individual trees
+    y[i] ~ dnorm(x[time[i],region[i]],tau_obs)		        ## data model
+  }
+}
+"
+y <- growth$HT_cm
+time <- rep(1:10, 970)
+region <- as.integer(growth$region)
+
+data <- list(region=region,NR=12,n=length(y),time=time,y=y,NT=10,x_ic=xinit,tau_ic=100,a_obs=1,r_obs=1,a_add=1,r_add=1,r1=0.1,r2=0.1,a_inc=1,r_inc=1)
+
+nchain = 3
+init <- list()
+for(i in 1:nchain){
+  y.samp = sample(y,length(y),replace=TRUE)
+  init[[i]] <- list(tau_add=1/var(diff(y.samp)),tau_obs=5/var(y.samp))
+}
+
+j.model   <- jags.model(file = textConnection(Log_RandomWalk_Regions),
+                        data = data,
+                        inits = init,
+                        n.chains = 3)
+
+jags.out   <- coda.samples (model = j.model,
+                            variable.names = c("x","alpha_r","tau_obs","tau_add"),
+                            n.iter = 5000)
+
+##evaluate model
+#plot(jags.out)
+#gelman.plot(jags.out)
+
+##remove burnin
+burnin = 500                                ## determine convergence
+jags.burn <- window(jags.out,start=burnin)  ## remove burn-in
+gelman.plot(jags.burn)
+
+effectiveSize(jags.burn)
+summary(jags.burn)
+out <- as.matrix(jags.burn)
+
+## credible and prediction intervals
+head(out)
+nsamp <- 5000
+samp <- sample.int(nrow(out),nsamp)
+xpred <- seq(1,10,length=10)  					## sequence of x values we're going to
+npred <- length(xpred)				##      make predictions for
+
+alpha_matrix <- out[,1:12]
+head(alpha_matrix)
+
+intervals_by_region <- list()
+
+for(i in seq_len(12)){# region loop
+  ypred <- matrix(0.0,nrow=nsamp,ncol=npred)	## storage for predictive interval
+  ycred <- matrix(0.0,nrow=nsamp,ncol=npred)	## storage for credible interval
+  for(g in seq_len(nsamp)){ # sample loop
+    theta <- out[samp[g],]
+    alpha_i <- theta[i] 
+    ycred[g,] <- theta[grep(paste(",",i,"]",sep = ""),names(theta))]+ alpha_i +
+    ypred[g,] <- rnorm(npred, ycred[g,], 1/sqrt(theta["tau_obs"]))
+  }
+  
+  ci <- apply(ycred,2,quantile,c(0.025,0.5,0.975))  ## credible interval and median
+  pi <- apply(ypred,2,quantile,c(0.025,0.975))		## prediction interval
+  intervals_by_region[[i]]<- rbind(ci,pi)
+}
+
+
+
+#'
+#' # Plot for each region over time
+#'
+## region colors
+
+colors_C <- c("deepskyblue1", "purple","magenta",
+              "red","brown","darkblue","green",
+              "orange","yellow","darkslategray",
+              "black","bisque4")
+
+colors_C
+regions <- levels(growth$region)
+
+head(intervals_by_region)
+dev.off()
+plot(seq(from=0,to=1200,length.out = 10)~xpred,type="n",ylab = "Height (cm)",xlab="Year")
+
+for(s in 1:12){
+  ciEnvelope(x = xpred,ylo = intervals_by_region[[s]][1,],
+             yhi = intervals_by_region[[s]][3,],col=col.alpha(colors_C[s],0.6))
+  points(xpred,intervals_by_region[[s]][2,],col=colors_C[s],pch=19)
+  points(xpred,intervals_by_region[[s]][2,])
+}
+legend(x = 0.75,y = 1210,legend = regions,col = colors_C,pch = 16,bty = "n")
+
+
+#'
+#' Model without the last 3 years
+#'
+
+growth$HT_cm2 <- ifelse(growth$year%in%c(2016,2017,2018),NA,growth$HT_cm)
+
+y <- growth$HT_cm2
+time <- growth$time
+region <- as.integer(growth$region)
+
+data <- list(region=region,NR=12,n=length(y),time=time,y=y,NT=10,x_ic=5,tau_ic=100,a_obs=1,r_obs=1,a_add=1,r_add=1,r1=0.1,r2=0.1)
+
+nchain = 3
+init <- list()
+for(i in 1:nchain){
+  y.samp = sample(y,length(y),replace=TRUE)
+  init[[i]] <- list(tau_add=1/var(diff(y.samp)),tau_obs=5/var(y.samp))
+}
+
+j.model   <- jags.model(file = textConnection(RandomWalk_Regions),
+                        data = data,
+                        inits = init,
+                        n.chains = 3)
+
+jags.out   <- coda.samples (model = j.model,
+                            variable.names = c("x","alpha_r","beta","tau_obs","tau_add"),
+                            n.iter = 5000)
+
+##evaluate model
+plot(jags.out)
+gelman.plot(jags.out)
+
+##remove burnin
+burnin = 500                                ## determine convergence
+jags.burn <- window(jags.out,start=burnin)  ## remove burn-in
+gelman.plot(jags.burn)
+
+acfplot(jags.burn)
+effectiveSize(jags.burn)
+summary(jags.burn)
+out <- as.matrix(jags.burn)
+
+## credible and prediction intervals
+head(out)
+nsamp <- 5000
+samp <- sample.int(nrow(out),nsamp)
+xpred <- seq(1,10,length=10)  					## sequence of x values we're going to
+npred <- length(xpred)				##      make predictions for
+
+alpha_matrix <- out[,1:12]
+head(alpha_matrix)
+
+intervals_by_region <- list()
+
+for(i in seq_len(12)){# region loop
+  ypred <- matrix(0.0,nrow=nsamp,ncol=npred)	## storage for predictive interval
+  ycred <- matrix(0.0,nrow=nsamp,ncol=npred)	## storage for credible interval
+  for(g in seq_len(nsamp)){ # sample loop
+    theta <- out[samp[g],]
+    alpha_i <- theta[i] 
+    ycred[g,] <- theta[grep(paste(",",i,"]",sep = ""),names(theta))]+ alpha_i 
+      ypred[g,] <- rnorm(npred, ycred[g,], 1/sqrt(theta["tau_obs"]))
+  }
+  
+  ci <- apply(ycred,2,quantile,c(0.025,0.5,0.975))  ## credible interval and median
+  pi <- apply(ypred,2,quantile,c(0.025,0.975))		## prediction interval
+  intervals_by_region[[i]]<- rbind(ci,pi)
+}
+
+#'
+#' # Plot for each region over time
+#'
+## region colors
+
+colors_C <- c("deepskyblue1", "purple","magenta",
+              "red","brown","darkblue","green",
+              "orange","yellow","darkslategray",
+              "black","bisque4")
+
+colors_C
+regions <- levels(growth$region)
+
+head(intervals_by_region)
+dev.off()
+plot(seq(from=0,to=1200,length.out = 10)~xpred,type="n",ylab = "Height (cm)",xlab="Year")
+
+for(s in 1:12){
+  ciEnvelope(x = xpred,ylo = intervals_by_region[[s]][1,],
+             yhi = intervals_by_region[[s]][3,],col=col.alpha(colors_C[s],0.6))
+  points(xpred,intervals_by_region[[s]][2,],col=colors_C[s],pch=19)
+  points(xpred,intervals_by_region[[s]][2,])
+}
+legend(x = 0.75,y = 1210,legend = regions,col = colors_C,pch = 16,bty = "n")
 ```
 
 #Mean for Each Region Random Walk
