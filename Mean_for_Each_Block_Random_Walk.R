@@ -2,7 +2,7 @@ library(dplyr)
 library(ecoforecastR)
 
 #read in tree growth data
-data <- read.csv("buckhorn_growth_2007_2018.csv", stringsAsFactors = FALSE) %>%
+data <- read.csv("buckhorn_growth_2007_2018.csv") %>%
   mutate(time = rep(1:10, 970))
 
 #remove non-integer values from column "row"
@@ -25,7 +25,7 @@ growth <- sub %>%
   # 1 = dead
 # This is to incorporate mortality into future models 
 live_dead <- growth %>%
-   mutate(mortality = as.integer(factor(alive))) %>%
+   mutate(mortality = as.integer(alive)) %>%
    select(plot, tag_num, year, mortality) 
 
 RandomWalk_Regions <- "
@@ -53,7 +53,7 @@ model{
 "
 y <- growth$HT_cm
 time <- growth$time
-region <- as.integer(factor(growth$region))
+region <- as.integer(growth$region)
 
 data <- list(region=region,NR=12,n=length(y),time=time,y=y,NT=10,x_ic=5,tau_ic=100,a_obs=1,r_obs=1,a_add=1,r_add=1,r1=0.1,r2=0.1)
 
