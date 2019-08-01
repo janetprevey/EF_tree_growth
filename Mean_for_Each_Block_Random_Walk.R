@@ -2,7 +2,8 @@ library(dplyr)
 library(ecoforecastR)
 
 #read in tree growth data
-data <- read.csv("buckhorn_growth_2007_2018.csv", stringsAsFactors = FALSE)
+data <- read.csv("buckhorn_growth_2007_2018.csv", stringsAsFactors = FALSE) %>%
+  mutate(time = rep(1:10, 970))
 
 #remove non-integer values from column "row"
 sub <- data[data$row %%1 == 0,] 
@@ -51,7 +52,7 @@ y[i] ~ dnorm(x[time[i]],tau_obs)		        ## data model
 "
 
 y <- growth$HT_cm
-time <- rep(1:10, 970)
+time <- growth$time
 region <- as.integer(factor(growth$region))
 
 data <- list(region=region,NR=12,n=length(y),time=time,y=y,NT=10,x_ic=5,tau_ic=100,a_obs=1,r_obs=1,a_add=1,r_add=1,s1=0.1,s2=0.1)
