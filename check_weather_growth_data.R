@@ -68,3 +68,15 @@ hist(buck$HT_cm)
 buck2010 <-subset(buck, year=="2010")
 
 hist(buck2010$HT_cm)
+
+### Make a nice graph with the right colors 
+
+theme_set(theme_bw(base_size=20))
+
+bam <- ggplot(data = buck, aes(x = year, y = HT_cm)) + geom_point(aes(color = region)) + geom_smooth(aes(color = region), method = lm, size = 2)
+
+blam <- bam + scale_color_manual(values=c("deepskyblue1", "purple","magenta","red","brown","darkblue","green","orange","yellow","darkslategray","black","bisque4"))
+
+blam + labs(x="Year",y= "Height (cm)") 
+
+
