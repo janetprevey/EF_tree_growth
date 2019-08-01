@@ -1,4 +1,33 @@
-```{r}
+library(dplyr)
+library(ecoforecastR)
+
+#read in tree growth data
+data <- read.csv("buckhorn_growth_2007_2018.csv", stringsAsFactors = FALSE)
+
+#remove non-integer values from column "row"
+sub <- data[data$row %%1 == 0,] 
+
+#filter trees to see tag numbers of trees labeled "NP" (Not Planted)
+NP <- filter(sub, alive == "NP") %>%
+  select(tag_num)
+
+# remove trees labled "NP" (Not Planted) in 2009 from all years, 
+# remove trees that died during experiment, remove unneeded columns 
+growth <- sub %>%
+  arrange(plot) %>%
+  filter(!tag_num %in% c(4909,56,4856,4887,2142,3682)) %>%
+  filter(alive == "y") %>%
+  select(-site, -site_num, -dead_year, -notes) 
+  
+# create separate mortality dataframe, where:
+  # 2 = alive
+  # 1 = dead
+# This is to incorporate mortality into future models 
+live_dead <- clean %>%
+   mutate(mortality = as.integer(factor(alive))) %>%
+   select(plot, tag_num, year, mortality) 
+
+
 RandomWalk_Blocks <- "
 model{
 x[1] ~ dnorm(x_ic,tau_ic)
